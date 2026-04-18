@@ -30,19 +30,36 @@ const cartRoutes     = require('./routes/cartRoutes');
 const app = express();
 
 // ── CORS must come first — before Helmet and rate limiters ──
-// In development, allow the Expo web dev server (8081) and any localhost port.
-// In production, lock this down to your actual domain.
-const allowedOrigins = process.env.NODE_ENV === 'production'
-  ? (process.env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean)
-  : true; // allow all origins in development
+// Native mobile clients typically do not send an Origin header.
+// We allow those requests and strictly check Origin only for browser clients.
+const isProduction = process.env.NODE_ENV === 'production';
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
 
-app.use(cors({
-  origin: allowedOrigins,
+const corsOptions = {
+  origin(origin, callback) {
+    if (!isProduction) return callback(null, true);
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.length === 0) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-app.options('*', cors()); // handle preflight for all routes
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // handle preflight for all routes
 
 // ── Security Middleware (Platform Services — Aryan 2) ──
 app.use(helmetMiddleware);       // Helmet: HSTS, CSP, X-Frame, etc.
