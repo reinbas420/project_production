@@ -1,0 +1,28 @@
+<<<<<<< HEAD
+<<<<<<< HEAD
+# --- Excel / Office Temp Files ---
+~$*.doc*
+~$*.xls*
+*.tmp
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+venv/
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
+=======
+.vscode
+>>>>>>> 0a44420 (Added frontend logic layer)
+=======
+.vscode
+
+# Environment variables - never commit secrets
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+>>>>>>> 52c3806 (feat: stub services, model-spec alignment, gitignore env files)
