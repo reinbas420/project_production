@@ -1,4 +1,9 @@
 import api from '../axiosInstance';
+import { filterBooksWithCovers } from '../../utils/bookFilters';
+
+function getBooksArray(payload) {
+    return payload?.data?.books ?? payload?.books ?? [];
+}
 
 /**
  * Book Service
@@ -15,10 +20,20 @@ const bookService = {
             const branchId = params.branchId;
             const { branchId: _branchId, ...rest } = params;
             const response = await api.get(`/books/branch/${branchId}`, { params: rest });
+            const books = getBooksArray(response.data);
+            if (Array.isArray(books)) {
+                if (response.data?.data?.books) response.data.data.books = filterBooksWithCovers(books);
+                if (response.data?.books) response.data.books = filterBooksWithCovers(books);
+            }
             return response.data;
         }
 
         const response = await api.get('/books', { params });
+        const books = getBooksArray(response.data);
+        if (Array.isArray(books)) {
+            if (response.data?.data?.books) response.data.data.books = filterBooksWithCovers(books);
+            if (response.data?.books) response.data.books = filterBooksWithCovers(books);
+        }
         return response.data;
     },
 
@@ -28,6 +43,11 @@ const bookService = {
      */
     searchBooks: async (query) => {
         const response = await api.get('/books/search', { params: { q: query } });
+        const books = getBooksArray(response.data);
+        if (Array.isArray(books)) {
+            if (response.data?.data?.books) response.data.data.books = filterBooksWithCovers(books);
+            if (response.data?.books) response.data.books = filterBooksWithCovers(books);
+        }
         return response.data;
     },
 

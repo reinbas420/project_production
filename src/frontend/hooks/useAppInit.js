@@ -3,6 +3,7 @@ import bookService from '../api/services/bookService';
 import useAuthStore from '../store/authStore';
 import useBookStore from '../store/bookStore';
 import useNetworkStore from '../store/networkStore';
+import { filterBooksWithCovers } from '../utils/bookFilters';
 
 /**
  * useAppInit Hook
@@ -39,7 +40,8 @@ export default function useAppInit() {
                 setLoading(true);
                 try {
                     const freshBooks = await bookService.getBooks();
-                    await setBooks(freshBooks); // updates state + cache
+                    const books = filterBooksWithCovers(freshBooks?.data?.books ?? freshBooks?.books ?? []);
+                    await setBooks(books); // updates state + cache
                     setOnline();
                 } catch (networkError) {
                     // ── Step 4: Graceful fallback on network failure ──

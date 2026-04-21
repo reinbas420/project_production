@@ -15,6 +15,8 @@ export default function UserLayout() {
       <Stack.Screen name="select-address" />
       <Stack.Screen name="authors" />
       <Stack.Screen name="publishers" />
+      <Stack.Screen name="author-detail" />
+      <Stack.Screen name="publisher-detail" />
     </Stack>
   );
 }

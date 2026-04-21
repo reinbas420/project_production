@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { View, Text, Platform, TextInput, TouchableOpacity, ScrollView, StyleSheet, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
+import { View, Text, Platform, TextInput, TouchableOpacity, ScrollView, StyleSheet, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NavBar, NAV_BOTTOM_PAD } from '@/components/NavBar';
 import { ChatMessageText } from '@/components/ChatMessageText';
@@ -40,8 +40,23 @@ export default function OwlUserTab() {
   const [historyReady, setHistoryReady] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
-  const bottomInset = Platform.OS === 'web' ? 0 : NAV_BOTTOM_PAD + 14;
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,7 +126,7 @@ export default function OwlUserTab() {
           try {
             const parsed = JSON.parse(dataStr);
             currentParsedText += parsed.text;
-          } catch (e) {
+          } catch {
             // Incomplete JSON chunk, skip until next flush
           }
         }
@@ -142,8 +157,7 @@ export default function OwlUserTab() {
   return (
     <SafeAreaView style={s.safe}>
       {Platform.OS === 'web' && <NavBar role="user" active="owl" />}
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, paddingBottom: bottomInset }}>
-        
+      <View style={{ flex: 1 }}>
         <View style={s.header}>
           <Text style={s.headerTitle}>🦉 Chat with Owl</Text>
         </View>
@@ -151,7 +165,8 @@ export default function OwlUserTab() {
         <ScrollView 
           ref={scrollRef}
           style={s.chatArea} 
-          contentContainerStyle={{ padding: Spacing.xl, gap: Spacing.md }}
+          contentContainerStyle={{ padding: Spacing.xl, paddingBottom: 170, gap: Spacing.md }}
+          keyboardShouldPersistTaps="handled"
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
         >
           {messages.map((m) => (
@@ -173,7 +188,20 @@ export default function OwlUserTab() {
           ))}
         </ScrollView>
 
-        <View style={s.inputRow}>
+        <View
+          style={[
+            s.inputDock,
+            {
+              bottom:
+                Platform.OS === 'web'
+                  ? 0
+                  : keyboardHeight > 0
+                    ? Math.max(0, keyboardHeight - NAV_BOTTOM_PAD)
+                    : 0,
+            },
+          ]}
+        >
+          <View style={s.inputRow}>
           <TextInput
             style={s.input}
             placeholder="Ask Owl about books, your library, or reading..."
@@ -185,9 +213,9 @@ export default function OwlUserTab() {
           <TouchableOpacity style={s.sendBtn} onPress={sendMessage} disabled={loading || !input.trim()}>
             <MaterialIcons name="send" size={20} color={Colors.textOnDark} />
           </TouchableOpacity>
+          </View>
         </View>
-        
-      </KeyboardAvoidingView>
+      </View>
       {Platform.OS !== 'web' && <NavBar role="user" active="owl" />}
     </SafeAreaView>
   );
@@ -214,6 +242,13 @@ const s = StyleSheet.create({
   linkText: { color: Colors.accentSage, textDecorationLine: 'underline', fontWeight: '800' },
   boldText: { fontWeight: '800' },
   userMsgText: { color: Colors.textOnDark },
+  inputDock: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    paddingHorizontal: 0,
+    zIndex: 20,
+  },
   inputRow: { 
     flexDirection: 'row', 
     padding: Spacing.md, 
@@ -222,7 +257,7 @@ const s = StyleSheet.create({
     borderTopColor: Colors.cardBorder,
     alignItems: 'center',
     gap: Spacing.sm,
-    marginBottom: 8,
+    marginHorizontal: 0,
   },
   input: {
     flex: 1,

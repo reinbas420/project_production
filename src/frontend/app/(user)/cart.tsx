@@ -1,14 +1,17 @@
 import cartService from '@/api/services/cartService';
 import bookService from '@/api/services/bookService';
 import axiosInstance from '@/api/axiosInstance';
+import locationService from '@/api/services/locationService';
+import AddressPickerModal from '@/components/AddressPickerModal';
 import { NavBar, NAV_BOTTOM_PAD } from '@/components/NavBar';
 import { Colors, Radius, Spacing, Typography } from '@/constants/theme';
 import useAppStore from '@/store/useAppStore';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -36,18 +39,53 @@ type ItemWithBook = CartItem & {
 
 export default function CartScreen() {
   const router = useRouter();
-  const { activeProfileId } = useAppStore();
+  const { activeProfileId, userId, profiles, setActiveProfile } = useAppStore();
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartPayload | null>(null);
   const [items, setItems] = useState<ItemWithBook[]>([]);
   const [updatingBookId, setUpdatingBookId] = useState<string | null>(null);
   const [cartLibraryName, setCartLibraryName] = useState<string>('');
   const [orderingAll, setOrderingAll] = useState(false);
+  const [showProfilePicker, setShowProfilePicker] = useState(false);
+  const [showAddressPicker, setShowAddressPicker] = useState(false);
+  const [selectedAddress, setSelectedAddress] = useState<any>(null);
+  const [addressLoading, setAddressLoading] = useState(false);
+
+  const activeProfile = useMemo(
+    () => profiles.find((profile) => profile.profileId === activeProfileId) || null,
+    [profiles, activeProfileId],
+  );
 
   const totalCount = useMemo(
     () => items.reduce((sum, item) => sum + item.quantity, 0),
     [items],
   );
+
+  const formatAddress = (addr: any) => {
+    if (!addr) return 'No delivery address selected';
+    const parts = [addr.street, addr.city, addr.state, addr.pincode].filter(Boolean);
+    return parts.join(', ') || 'No delivery address selected';
+  };
+
+  const loadSelectedAddress = useCallback(async () => {
+    if (!userId) {
+      setSelectedAddress(null);
+      return;
+    }
+
+    setAddressLoading(true);
+    try {
+      const res: any = await locationService.getDeliveryAddresses(userId);
+      const addresses = res?.data?.addresses ?? res?.addresses ?? [];
+      const preferred = addresses.find((addr: any) => addr?.isDefault) || addresses[0] || null;
+      setSelectedAddress(preferred);
+    } catch (error) {
+      console.warn('Failed to load delivery address', error);
+      setSelectedAddress(null);
+    } finally {
+      setAddressLoading(false);
+    }
+  }, [userId]);
 
   const loadCart = async (showLoader = true) => {
     if (showLoader) {
@@ -114,6 +152,35 @@ export default function CartScreen() {
   useEffect(() => {
     loadCart();
   }, []);
+
+  useEffect(() => {
+    loadSelectedAddress();
+  }, [loadSelectedAddress]);
+
+  const handleSelectAddress = async (address: any) => {
+    setSelectedAddress(address);
+    setShowAddressPicker(false);
+
+    if (!userId || !address?._id) return;
+
+    try {
+      await locationService.setDefaultAddress(userId, address._id);
+    } catch (error) {
+      console.warn('Failed to set default address', error);
+    }
+
+    await loadSelectedAddress();
+  };
+
+  const handleSelectProfile = async (profileId: string) => {
+    try {
+      await setActiveProfile(profileId);
+    } catch (error) {
+      console.warn('Failed to set active profile', error);
+    } finally {
+      setShowProfilePicker(false);
+    }
+  };
 
   const updateQuantity = async (bookId: string, operation: 'increment' | 'decrement') => {
     const prevItems = items;
@@ -359,15 +426,101 @@ export default function CartScreen() {
           <View style={{ width: 40 }} />
         </View>
 
-        <View style={s.summaryCard}>
-          <Text style={s.summaryLabel}>Total Books</Text>
-          <Text style={s.summaryValue}>{totalCount}</Text>
-          <Text style={s.summaryMeta}>
-            {cart?.library_id
-              ? `Library: ${cartLibraryName || cart.library_id}`
-              : 'No library selected'}
-          </Text>
-        </View>
+        {Platform.OS === 'web' ? (
+          <View style={s.combinedTopCard}>
+            <View style={[s.orderContextCard, s.combinedHalfCard]}>
+              <View style={s.orderContextRow}>
+                <Text style={s.orderContextLabel}>Ordering for</Text>
+                <TouchableOpacity
+                  style={s.profileDropdownBtn}
+                  onPress={() => setShowProfilePicker(true)}
+                  activeOpacity={0.82}
+                >
+                  <Text style={s.profileDropdownText}>
+                    {activeProfile
+                      ? `${activeProfile.name} (${activeProfile.accountType === 'CHILD' ? 'Child' : 'Parent'})`
+                      : 'No profile selected'}
+                  </Text>
+                  <Text style={s.profileDropdownChevron}>▾</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={s.orderContextRow}>
+                <Text style={s.orderContextLabel}>Delivery address</Text>
+                {addressLoading ? (
+                  <ActivityIndicator size="small" color={Colors.accentSage} />
+                ) : (
+                  <Text style={s.orderContextAddress}>{formatAddress(selectedAddress)}</Text>
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={s.changeAddressBtn}
+                onPress={() => setShowAddressPicker(true)}
+                activeOpacity={0.82}
+              >
+                <Text style={s.changeAddressText}>Change Address</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[s.summaryCard, s.combinedHalfCard]}>
+              <Text style={s.summaryLabel}>Total Books</Text>
+              <Text style={s.summaryValue}>{totalCount}</Text>
+              <Text style={s.summaryMeta}>
+                {cart?.library_id
+                  ? `Library: ${cartLibraryName || cart.library_id}`
+                  : 'No library selected'}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <>
+            <View style={s.orderContextCard}>
+              <View style={s.orderContextRow}>
+                <Text style={s.orderContextLabel}>Ordering for</Text>
+                <TouchableOpacity
+                  style={s.profileDropdownBtn}
+                  onPress={() => setShowProfilePicker(true)}
+                  activeOpacity={0.82}
+                >
+                  <Text style={s.profileDropdownText}>
+                    {activeProfile
+                      ? `${activeProfile.name} (${activeProfile.accountType === 'CHILD' ? 'Child' : 'Parent'})`
+                      : 'No profile selected'}
+                  </Text>
+                  <Text style={s.profileDropdownChevron}>▾</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={s.orderContextRow}>
+                <Text style={s.orderContextLabel}>Delivery address</Text>
+                {addressLoading ? (
+                  <ActivityIndicator size="small" color={Colors.accentSage} />
+                ) : (
+                  <Text style={s.orderContextAddress}>{formatAddress(selectedAddress)}</Text>
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={s.changeAddressBtn}
+                onPress={() => setShowAddressPicker(true)}
+                activeOpacity={0.82}
+              >
+                <Text style={s.changeAddressText}>Change Address</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={s.summaryCard}>
+              <Text style={s.summaryLabel}>Total Books</Text>
+              <Text style={s.summaryValue}>{totalCount}</Text>
+              <Text style={s.summaryMeta}>
+                {cart?.library_id
+                  ? `Library: ${cartLibraryName || cart.library_id}`
+                  : 'No library selected'}
+              </Text>
+            </View>
+          </>
+        )}
 
         {items.length === 0 ? (
           <View style={s.emptyCard}>
@@ -430,6 +583,43 @@ export default function CartScreen() {
           </TouchableOpacity>
         )}
       </ScrollView>
+      <AddressPickerModal
+        visible={showAddressPicker}
+        onClose={() => setShowAddressPicker(false)}
+        onSelect={handleSelectAddress}
+      />
+      <Modal
+        visible={showProfilePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowProfilePicker(false)}
+      >
+        <TouchableOpacity
+          style={s.profileModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowProfilePicker(false)}
+        >
+          <View style={s.profileModalCard}>
+            <Text style={s.profileModalTitle}>Select Profile</Text>
+            {profiles.map((profile) => {
+              const isActive = profile.profileId === activeProfileId;
+              return (
+                <TouchableOpacity
+                  key={profile.profileId}
+                  style={[s.profileOption, isActive && s.profileOptionActive]}
+                  onPress={() => handleSelectProfile(profile.profileId)}
+                  activeOpacity={0.82}
+                >
+                  <Text style={[s.profileOptionText, isActive && s.profileOptionTextActive]}>
+                    {profile.name} ({profile.accountType === 'CHILD' ? 'Child' : 'Parent'})
+                  </Text>
+                  {isActive && <Text style={s.profileOptionCheck}>✓</Text>}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
       {Platform.OS !== 'web' && <NavBar role="user" active="cart" />}
     </SafeAreaView>
   );
@@ -471,6 +661,131 @@ const s = StyleSheet.create({
   summaryLabel: { fontSize: Typography.label, color: Colors.textSecondary, fontWeight: '700' },
   summaryValue: { fontSize: Typography.title, color: Colors.accentSage, fontWeight: '800' },
   summaryMeta: { fontSize: Typography.label, color: Colors.textMuted },
+
+  combinedTopCard: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  combinedHalfCard: {
+    flex: 1,
+    marginBottom: 0,
+  },
+
+  orderContextCard: {
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  orderContextRow: {
+    gap: 4,
+  },
+  orderContextLabel: {
+    fontSize: Typography.label,
+    color: Colors.textSecondary,
+    fontWeight: '700',
+  },
+  orderContextValue: {
+    fontSize: Typography.body,
+    color: Colors.textPrimary,
+    fontWeight: '700',
+  },
+  profileDropdownBtn: {
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    backgroundColor: Colors.background,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  profileDropdownText: {
+    flex: 1,
+    fontSize: Typography.body,
+    color: Colors.textPrimary,
+    fontWeight: '700',
+  },
+  profileDropdownChevron: {
+    fontSize: Typography.body,
+    color: Colors.textMuted,
+    fontWeight: '700',
+  },
+  orderContextAddress: {
+    fontSize: Typography.label,
+    color: Colors.textPrimary,
+    lineHeight: 20,
+  },
+  changeAddressBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 2,
+    borderRadius: Radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: Colors.accentSageLight,
+  },
+  changeAddressText: {
+    fontSize: Typography.label,
+    fontWeight: '800',
+    color: Colors.accentSage,
+  },
+
+  profileModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+  },
+  profileModalCard: {
+    backgroundColor: Colors.card,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    padding: Spacing.md,
+    gap: Spacing.xs,
+  },
+  profileModalTitle: {
+    fontSize: Typography.body,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  profileOption: {
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    backgroundColor: Colors.background,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  profileOptionActive: {
+    borderColor: Colors.accentSage,
+    backgroundColor: Colors.accentSageLight,
+  },
+  profileOptionText: {
+    fontSize: Typography.body,
+    color: Colors.textPrimary,
+    fontWeight: '600',
+    flex: 1,
+  },
+  profileOptionTextActive: {
+    color: Colors.accentSage,
+    fontWeight: '700',
+  },
+  profileOptionCheck: {
+    fontSize: Typography.body,
+    color: Colors.accentSage,
+    fontWeight: '800',
+  },
 
   emptyCard: {
     backgroundColor: Colors.card,

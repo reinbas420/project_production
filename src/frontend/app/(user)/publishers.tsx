@@ -1,4 +1,4 @@
-import catalogService, { type CatalogPublisherDetails, type CatalogPublisherSearchResult } from '@/api/services/catalogService';
+import catalogService, { type CatalogPublisherSearchResult } from '@/api/services/catalogService';
 import { NavBar, NAV_BOTTOM_PAD } from '@/components/NavBar';
 import { Colors, Radius, Spacing, Typography } from '@/constants/theme';
 import { useRouter } from 'expo-router';
@@ -15,51 +15,60 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+// Keep highest mentions per unique name
+function deduplicatePublishers(results: CatalogPublisherSearchResult[]): CatalogPublisherSearchResult[] {
+  const map = new Map<string, CatalogPublisherSearchResult>();
+  for (const p of results) {
+    const key = p.name.toLowerCase().trim();
+    const existing = map.get(key);
+    if (!existing || (p.mentions ?? 0) > (existing.mentions ?? 0)) {
+      map.set(key, p);
+    }
+  }
+  return Array.from(map.values());
+}
+
+function PublisherCard({ publisher, onPress }: { publisher: CatalogPublisherSearchResult; onPress: () => void }) {
+  const initial = publisher.name?.charAt(0).toUpperCase() ?? '?';
+  return (
+    <View style={card.wrap}>
+      <View style={card.avatar}>
+        <Text style={card.avatarText}>{initial}</Text>
+      </View>
+      <Text style={card.name} numberOfLines={2}>{publisher.name}</Text>
+      <Text style={card.meta}>{publisher.mentions} book mention{publisher.mentions !== 1 ? 's' : ''}</Text>
+      {publisher.sampleTitles.length > 0 ? (
+        <Text style={card.sample} numberOfLines={1}>e.g. {publisher.sampleTitles[0]}</Text>
+      ) : null}
+      <TouchableOpacity style={card.btn} onPress={onPress}>
+        <Text style={card.btnText}>View Profile</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function PublishersScreen() {
   const router = useRouter();
   const [query, setQuery] = useState('Penguin');
   const [publishers, setPublishers] = useState<CatalogPublisherSearchResult[]>([]);
-  const [selected, setSelected] = useState<CatalogPublisherDetails | null>(null);
   const [loading, setLoading] = useState(false);
-  const [detailsLoading, setDetailsLoading] = useState(false);
 
   const runSearch = async () => {
     const q = query.trim();
-    if (!q) {
-      setPublishers([]);
-      setSelected(null);
-      return;
-    }
-
+    if (!q) { setPublishers([]); return; }
     setLoading(true);
     try {
-      const results = await catalogService.searchPublishers(q, 14);
-      setPublishers(results);
-      setSelected(null);
-    } catch (error) {
-      console.warn('Publisher search failed', error);
+      const raw = await catalogService.searchPublishers(q, 20);
+      setPublishers(deduplicatePublishers(raw));
+    } catch (e) {
+      console.warn('Publisher search failed', e);
       setPublishers([]);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    runSearch();
-  }, []);
-
-  const openPublisher = async (name: string) => {
-    setDetailsLoading(true);
-    try {
-      const details = await catalogService.getPublisherDetails(name);
-      setSelected(details);
-    } catch (error) {
-      console.warn('Publisher details failed', error);
-      setSelected(null);
-    } finally {
-      setDetailsLoading(false);
-    }
-  };
+  useEffect(() => { runSearch(); }, []);
 
   return (
     <SafeAreaView style={s.safe}>
@@ -68,9 +77,8 @@ export default function PublishersScreen() {
         <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
           <Text style={s.backText}>← Back</Text>
         </TouchableOpacity>
-
         <Text style={s.title}>Publisher Explorer</Text>
-        <Text style={s.subtitle}>Discover publishers and related catalog data from Open Library.</Text>
+        <Text style={s.subtitle}>Discover publishers and related catalog data from our library collection.</Text>
 
         <View style={s.searchWrap}>
           <TextInput
@@ -88,53 +96,79 @@ export default function PublishersScreen() {
         </View>
 
         {loading ? <ActivityIndicator size="small" color={Colors.accentSage} /> : null}
+        {publishers.length === 0 && !loading ? (
+          <Text style={s.empty}>No publishers found. Try a different name.</Text>
+        ) : null}
 
-        <View style={s.card}>
-          <Text style={s.sectionTitle}>Results</Text>
-          {publishers.length === 0 && !loading ? <Text style={s.empty}>No publishers found.</Text> : null}
+        <View style={s.grid}>
           {publishers.map((publisher) => (
-            <TouchableOpacity key={publisher.name} style={s.row} onPress={() => openPublisher(publisher.name)}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.rowTitle}>{publisher.name}</Text>
-                <Text style={s.rowMeta}>
-                  Mentioned in {publisher.mentions} indexed books
-                </Text>
-                {publisher.sampleTitles.length > 0 ? (
-                  <Text style={s.rowMeta}>Sample: {publisher.sampleTitles.join(', ')}</Text>
-                ) : null}
-              </View>
-              <Text style={s.rowArrow}>→</Text>
-            </TouchableOpacity>
+            <PublisherCard
+              key={publisher.name}
+              publisher={publisher}
+              onPress={() => router.push({ pathname: '/(user)/publisher-detail', params: { name: publisher.name } })}
+            />
           ))}
-        </View>
-
-        <View style={s.card}>
-          <Text style={s.sectionTitle}>Publisher Details</Text>
-          {detailsLoading ? <ActivityIndicator size="small" color={Colors.accentSage} /> : null}
-          {!detailsLoading && !selected ? <Text style={s.empty}>Tap a publisher above to load details.</Text> : null}
-          {!detailsLoading && selected ? (
-            <View style={{ gap: 8 }}>
-              <Text style={s.detailsTitle}>{selected.name}</Text>
-              {selected.location ? <Text style={s.detailsMeta}>Location: {selected.location}</Text> : null}
-              {selected.founded ? <Text style={s.detailsMeta}>Founded: {selected.founded}</Text> : null}
-              {selected.website ? <Text style={s.detailsMeta}>Website: {selected.website}</Text> : null}
-              {selected.description ? <Text style={s.detailsText}>{selected.description}</Text> : null}
-              <Text style={[s.detailsMeta, { marginTop: 4 }]}>Sample Books</Text>
-              {selected.books.slice(0, 10).map((book, idx) => (
-                <Text key={`${book.title}-${idx}`} style={s.workItem}>
-                  • {book.title}
-                  {book.firstPublishYear ? ` (${book.firstPublishYear})` : ''}
-                  {book.authorNames.length > 0 ? ` · ${book.authorNames.join(', ')}` : ''}
-                </Text>
-              ))}
-            </View>
-          ) : null}
         </View>
       </ScrollView>
       {Platform.OS !== 'web' && <NavBar role="user" active="home" />}
     </SafeAreaView>
   );
 }
+
+const CARD_MIN = 180;
+const AVATAR_SIZE = 64;
+
+const card = StyleSheet.create({
+  wrap: {
+    flex: 1,
+    minWidth: CARD_MIN,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    gap: 6,
+    alignItems: 'center',
+  },
+  avatar: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    backgroundColor: Colors.buttonPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  avatarText: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: Colors.buttonPrimaryText,
+  },
+  name: {
+    fontSize: Typography.body,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  meta: { fontSize: Typography.label, color: Colors.textSecondary },
+  sample: {
+    fontSize: Typography.caption,
+    color: Colors.textMuted,
+    textAlign: 'center',
+  },
+  btn: {
+    marginTop: 6,
+    backgroundColor: Colors.buttonPrimary,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+  },
+  btnText: {
+    fontSize: Typography.label,
+    fontWeight: '700',
+    color: Colors.buttonPrimaryText,
+  },
+});
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
@@ -161,30 +195,11 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   searchBtnText: { color: Colors.textOnDark, fontWeight: '700' },
-  card: {
-    backgroundColor: Colors.card,
-    borderColor: Colors.cardBorder,
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    gap: 8,
-  },
-  sectionTitle: { fontSize: Typography.body, fontWeight: '800', color: Colors.textPrimary },
-  empty: { color: Colors.textMuted, fontSize: Typography.label },
-  row: {
+  grid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    borderRadius: Radius.md,
-    padding: 10,
-    gap: 8,
+    flexWrap: 'wrap',
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
   },
-  rowTitle: { color: Colors.textPrimary, fontSize: Typography.body, fontWeight: '700' },
-  rowMeta: { color: Colors.textSecondary, fontSize: Typography.label },
-  rowArrow: { color: Colors.textMuted, fontSize: Typography.body, fontWeight: '700' },
-  detailsTitle: { color: Colors.textPrimary, fontSize: Typography.body + 1, fontWeight: '800' },
-  detailsMeta: { color: Colors.textSecondary, fontSize: Typography.label },
-  detailsText: { color: Colors.textPrimary, fontSize: Typography.label, lineHeight: 20 },
-  workItem: { color: Colors.textPrimary, fontSize: Typography.label },
+  empty: { color: Colors.textMuted, fontSize: Typography.label, textAlign: 'center', paddingVertical: Spacing.md },
 });

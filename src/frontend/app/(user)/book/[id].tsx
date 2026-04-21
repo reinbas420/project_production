@@ -366,7 +366,15 @@ export default function UserBookDetail() {
           <BookCover book={book} width={140} height={200} fontSize={13} />
           <View style={s.coverMeta}>
             <Text style={s.title}>{book.title}</Text>
-            <Text style={s.author}>by {book.author}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <Text style={s.author}>by {book.author}</Text>
+              <TouchableOpacity
+                style={{ backgroundColor: Colors.buttonPrimary, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 }}
+                onPress={() => router.push({ pathname: '/(user)/author-detail', params: { name: book.author, fromDB: '1' } })}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.buttonPrimaryText }}>View Author</Text>
+              </TouchableOpacity>
+            </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
               <StarRow rating={Math.round(book.rating)} />
               <Text style={s.ratingNum}>{book.rating}</Text>
@@ -529,7 +537,10 @@ export default function UserBookDetail() {
           )}
 
           <TouchableOpacity style={s.btnGhost} activeOpacity={0.82}>
-            <Text style={s.btnGhostText}>💬 Speak to a librarian</Text>
+            <View style={s.btnGhostContent}>
+              <Text style={s.btnGhostIcon}>💬</Text>
+              <Text style={s.btnGhostText}>Speak to a Librarian</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -633,7 +644,22 @@ const s = StyleSheet.create({
   btnReadText: { fontSize: Typography.body, fontWeight: '800', color: Colors.accentSage },
   btnGhost: {
     borderRadius: Radius.full, paddingVertical: 14, alignItems: 'center',
+    paddingHorizontal: Spacing.md,
     borderWidth: 1.5, borderColor: Colors.cardBorder,
   },
-  btnGhostText: { fontSize: Typography.body, fontWeight: '600', color: Colors.textSecondary },
+  btnGhostContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    width: '100%',
+  },
+  btnGhostIcon: { fontSize: Typography.body },
+  btnGhostText: {
+    fontSize: Typography.body,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    flexShrink: 1,
+  },
 });

@@ -1,6 +1,7 @@
 import { Colors } from "@/constants/theme";
 import useChildTrackingStore from "@/store/useChildTrackingStore";
 import useAppStore from "@/store/useAppStore";
+import { registerPushNotifications } from "@/utils/pushNotifications";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -12,12 +13,17 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const { hydrate: hydrateTracking } = useChildTrackingStore();
-  const { hydrate: hydrateApp, isLoading } = useAppStore();
+  const { hydrate: hydrateApp, isLoading, userId, isAuthenticated } = useAppStore();
 
   useEffect(() => {
     hydrateTracking();
     hydrateApp();
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !userId) return;
+    registerPushNotifications(userId);
+  }, [isAuthenticated, userId]);
 
   return (
     <>

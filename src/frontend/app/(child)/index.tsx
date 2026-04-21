@@ -4,6 +4,7 @@ import { NavBar, NAV_BOTTOM_PAD } from '@/components/NavBar';
 import { GENRES, type Book } from '@/constants/mockData';
 import { Colors, Radius, Spacing, Typography } from '@/constants/theme';
 import useAppStore from '@/store/useAppStore';
+import { filterBooksWithCovers } from '@/utils/bookFilters';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -76,11 +77,20 @@ const pill = StyleSheet.create({
 
 // ─── Book card ────────────────────────────────────────────────────────────────
 function ChildBookCard({ book, onPress }: { book: Book; onPress: () => void }) {
+  const [errored, setErrored] = useState(false);
+  if (errored || !book.coverImage) return null;
+
   const stars = '★'.repeat(Math.round(book.rating)) + '☆'.repeat(5 - Math.round(book.rating));
   return (
     <TouchableOpacity style={card.wrap} activeOpacity={0.82} onPress={onPress}>
       <View>
-        <BookCover book={book} width={CARD_W} height={CARD_H} fontSize={12} />
+        <BookCover
+          book={book}
+          width={CARD_W}
+          height={CARD_H}
+          fontSize={12}
+          onImageError={() => setErrored(true)}
+        />
         {book.availableCopies != null && (
           <View style={card.badge}>
             <Text style={card.badgeText}>
@@ -171,7 +181,7 @@ export default function ChildHome() {
         if (selectedBranchId) params.branchId = selectedBranchId;
         const response = await bookService.getBooks(params);
         if (active && response.data?.books) {
-          setBooks(response.data.books.map(mapBook));
+          setBooks(filterBooksWithCovers(response.data.books ?? response.data?.data?.books ?? []).map(mapBook));
         }
       } catch (err) {
         console.warn('Failed to fetch child books', err);

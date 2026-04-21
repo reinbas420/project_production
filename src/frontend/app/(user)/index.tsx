@@ -8,6 +8,7 @@ import { GENRES, type Book } from "@/constants/mockData";
 import { Colors, Radius, Spacing, Typography } from "@/constants/theme";
 import useAppStore from "@/store/useAppStore";
 import useChildTrackingStore from "@/store/useChildTrackingStore";
+import { filterBooksWithCovers } from "@/utils/bookFilters";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { NavBar, NAV_BOTTOM_PAD } from "@/components/NavBar";
 import * as Location from "expo-location";
@@ -58,7 +59,7 @@ function mapBook(b: any): Book {
 }
 
 function toAvailableBooks(books: any[]) {
-  return books
+  return filterBooksWithCovers(books)
     .map(mapBook)
     .filter((book) => (book.availableCopies ?? 0) > 0 && !!book.coverImage);
 }
@@ -120,10 +121,19 @@ const hc = StyleSheet.create({
 
 // ─── Search result row ────────────────────────────────────────────────────────
 function SearchRow({ book, onPress }: { book: Book; onPress: () => void }) {
+  const [errored, setErrored] = useState(false);
+  if (errored || !book.coverImage) return null;
+
   const isTrans = book.availableAtSelectedBranch === false;
   return (
     <TouchableOpacity style={[sr.row, isTrans && { opacity: 0.45 }]} onPress={onPress} activeOpacity={0.82}>
-      <BookCover book={book} width={56} height={76} fontSize={9} />
+      <BookCover
+        book={book}
+        width={56}
+        height={76}
+        fontSize={9}
+        onImageError={() => setErrored(true)}
+      />
       <View style={{ flex: 1, gap: 3 }}>
         <Text style={sr.title}>{book.title}</Text>
         <Text style={sr.author}>
@@ -778,7 +788,7 @@ export default function UserHome() {
         {/* ── Header ── */}
         <View style={s.header}>
           <TouchableOpacity
-            style={s.profileBtn}
+            style={[s.profileBtn, { marginLeft: -4, marginTop: -4 }]}
             onPress={() => setMenuVisible(true)}
           >
             <Text style={s.profileEmoji}>☰</Text>
@@ -787,44 +797,45 @@ export default function UserHome() {
             <Text style={s.greeting}>
               Hello, {activeProfile?.name || "Priya"}
             </Text>
-            {branches.length > 0 ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={{ marginTop: 4 }}
-                contentContainerStyle={{ paddingRight: 6 }}
-              >
-                {branches.filter(b => (b.distanceKm ?? 0) < 8).map(b => (
-                  <TouchableOpacity 
-                    key={b._id} 
-                    onPress={() => setSelectedBranch(b._id, b.name)}
-                    style={[
-                      s.branchPill,
-                      selectedBranchId === b._id ? s.branchPillActive : undefined,
-                    ]}
-                  >
-                    <Text style={[s.branchPillName, selectedBranchId === b._id ? s.branchPillNameActive : undefined]}>
-                      📍 {b.name}
-                    </Text>
-                    {typeof b.distanceKm === 'number' && (
-                      <Text style={[s.branchPillDistance, selectedBranchId === b._id ? s.branchPillDistanceActive : undefined]}>
-                        {b.distanceKm.toFixed(1)} km
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            ) : (
+            {branches.length === 0 && (
               <Text style={s.subGreeting}>What are you looking for today?</Text>
             )}
           </View>
           <TouchableOpacity
-            style={s.profileBtn}
+            style={[s.profileBtn, { marginRight: -4, marginTop: -4 }]}
             onPress={() => router.replace("/(select-profile)")}
           >
             <Text style={s.profileEmoji}>👤</Text>
           </TouchableOpacity>
         </View>
+
+        {branches.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={s.branchRow}
+          >
+            {branches.filter(b => (b.distanceKm ?? 0) < 8).map(b => (
+              <TouchableOpacity 
+                key={b._id} 
+                onPress={() => setSelectedBranch(b._id, b.name)}
+                style={[
+                  s.branchPill,
+                  selectedBranchId === b._id ? s.branchPillActive : undefined,
+                ]}
+              >
+                <Text style={[s.branchPillName, selectedBranchId === b._id ? s.branchPillNameActive : undefined]}>
+                  📍 {b.name}
+                </Text>
+                {typeof b.distanceKm === 'number' && (
+                  <Text style={[s.branchPillDistance, selectedBranchId === b._id ? s.branchPillDistanceActive : undefined]}>
+                    {b.distanceKm.toFixed(1)} km
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
         {/* ── Mode toggle: For You / For Your Child ── */}
         <View style={s.modeToggleRow}>
@@ -869,13 +880,11 @@ export default function UserHome() {
 
         {mode === 'forYou' && (
           <View style={s.catalogQuickRow}>
-            <TouchableOpacity style={s.catalogQuickBtn} onPress={() => router.push('/(user)/authors')}>
-              <Text style={s.catalogQuickTitle}>Author Explorer</Text>
-              <Text style={s.catalogQuickSub}>Open profiles & works</Text>
+            <TouchableOpacity style={s.catalogQuickPill} onPress={() => router.push('/(user)/authors')}>
+              <Text style={s.catalogQuickPillText}>Browse Authors</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.catalogQuickBtn} onPress={() => router.push('/(user)/publishers')}>
-              <Text style={s.catalogQuickTitle}>Publisher Explorer</Text>
-              <Text style={s.catalogQuickSub}>Open catalog lookup</Text>
+            <TouchableOpacity style={s.catalogQuickPill} onPress={() => router.push('/(user)/publishers')}>
+              <Text style={s.catalogQuickPillText}>Browse Publishers</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -1187,7 +1196,7 @@ export default function UserHome() {
       {/* ── Chatbot FAB ── */}
       <TouchableOpacity 
         style={{
-          position: 'absolute', bottom: Platform.OS !== 'web' ? 100 : 28, right: 24,
+          position: 'absolute', bottom: Platform.OS !== 'web' ? 118 : 28, right: 20,
           backgroundColor: Colors.accentSage,
           borderRadius: Radius.full,
           paddingVertical: 12, paddingHorizontal: 18,
@@ -1212,37 +1221,40 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xl,
-    paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
   },
   greeting: {
     fontSize: Typography.title + 2,
     fontWeight: "800",
     color: Colors.accentSage,
+    marginTop: -2,
+    marginRight: Spacing.sm,
   },
   subGreeting: {
     fontSize: Typography.body,
     color: Colors.textSecondary,
-    marginTop: 2,
+    marginTop: 0,
   },
   profileBtn: {
-    width: 48,
-    height: 48,
+    width: 46,
+    height: 46,
     borderRadius: Radius.full,
     backgroundColor: Colors.card,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1.5,
     borderColor: Colors.cardBorder,
+    marginHorizontal: 2,
   },
-  profileEmoji: { fontSize: 22 },
+  profileEmoji: { fontSize: 21 },
 
   branchPill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: Radius.full,
-    marginRight: 6,
+    marginRight: 8,
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: Colors.cardBorder,
@@ -1270,13 +1282,18 @@ const s = StyleSheet.create({
     color: Colors.textOnDark,
     opacity: 0.75,
   },
+  branchRow: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: 2,
+    paddingBottom: Spacing.sm,
+  },
 
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: Colors.card,
     borderRadius: Radius.full,
-    marginHorizontal: Spacing.xl,
+    marginHorizontal: Spacing.lg,
     marginBottom: Spacing.lg,
     paddingHorizontal: Spacing.md,
     paddingVertical: 12,
@@ -1300,29 +1317,24 @@ const s = StyleSheet.create({
   catalogQuickRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
   },
-  catalogQuickBtn: {
-    flex: 1,
+  catalogQuickPill: {
     backgroundColor: Colors.card,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Colors.cardBorder,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    gap: 3,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 7,
   },
-  catalogQuickTitle: {
+  catalogQuickPillText: {
     color: Colors.textPrimary,
-    fontSize: Typography.body,
-    fontWeight: '700',
-  },
-  catalogQuickSub: {
-    color: Colors.textSecondary,
     fontSize: Typography.label,
+    fontWeight: '600',
   },
 
-  section: { paddingHorizontal: Spacing.xl, marginBottom: Spacing.xl },
+  section: { paddingHorizontal: Spacing.lg, marginBottom: Spacing.xl },
   empty: {
     fontSize: Typography.body,
     color: Colors.textMuted,
@@ -1335,7 +1347,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     backgroundColor: Colors.accentSage,
     borderRadius: Radius.lg,
-    marginHorizontal: Spacing.xl,
+    marginHorizontal: Spacing.lg,
     marginBottom: Spacing.xl,
     padding: Spacing.md,
     gap: Spacing.md,
@@ -1395,7 +1407,7 @@ const s = StyleSheet.create({
   modeToggleRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.md,
   },
   modeBtn: {
@@ -1471,7 +1483,7 @@ const s = StyleSheet.create({
     borderRadius: Radius.full,
     paddingVertical: 14,
     alignItems: 'center',
-    marginHorizontal: Spacing.xl,
+    marginHorizontal: Spacing.lg,
   },
   btnPrimary2Text: {
     fontSize: Typography.body,

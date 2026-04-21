@@ -1,3 +1,5 @@
+import axiosInstance from '@/api/axiosInstance';
+import bookService from '@/api/services/bookService';
 import issueService from '@/api/services/issueService';
 import { NavBar, NAV_BOTTOM_PAD } from '@/components/NavBar';
 import { Colors, Radius, Spacing, Typography } from '@/constants/theme';
@@ -58,6 +60,7 @@ export default function ChildProgressScreen() {
 
   const [issues, setIssues] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [resolvedQuizResults, setResolvedQuizResults] = useState<QuizResult[]>([]);
 
   const quizResults: QuizResult[] = getQuizResults(profileId ?? '');
   const quizzesPassed = getQuizzesPassed(profileId ?? '');
@@ -72,6 +75,85 @@ export default function ChildProgressScreen() {
     }).catch(() => {}).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [userId, profileId]);
+
+  useEffect(() => {
+    let active = true;
+
+    const resolveQuizBookTitles = async () => {
+      const needsTitle = (title?: string) => !title || /unknown book|loading book/i.test(title);
+
+      const issueBookMap = new Map<string, string>();
+      for (const issue of issues) {
+        const issueBookId = issue.copyId?.bookId?._id || issue.bookId?._id || issue.bookId;
+        const issueBookTitle = issue.copyId?.bookId?.title || issue.bookId?.title;
+        if (issueBookId && issueBookTitle) {
+          issueBookMap.set(String(issueBookId), String(issueBookTitle));
+        }
+      }
+
+      const missingIds = Array.from(
+        new Set(
+          quizResults
+            .filter((result) => needsTitle(result.bookTitle) && result.bookId)
+            .map((result) => String(result.bookId)),
+        ),
+      ).filter((id) => !issueBookMap.has(id));
+
+      const historyBookMap = new Map<string, string>();
+      if (userId && missingIds.length > 0) {
+        try {
+          const historyRes = await axiosInstance.get(`/quizzes/history/${userId}`);
+          const history = Array.isArray(historyRes?.data?.data?.history)
+            ? historyRes.data.data.history
+            : [];
+
+          for (const attempt of history) {
+            const historyBookId = attempt?.bookId?._id || attempt?.bookId;
+            const historyBookTitle = attempt?.bookId?.title;
+            if (historyBookId && historyBookTitle) {
+              historyBookMap.set(String(historyBookId), String(historyBookTitle));
+            }
+          }
+        } catch {
+          // Backend history fallback is optional.
+        }
+      }
+
+      const apiBookMap = new Map<string, string>();
+      await Promise.all(
+        missingIds
+          .filter((bookId) => !historyBookMap.has(bookId))
+          .map(async (bookId) => {
+          try {
+            const response = await bookService.getBookById(bookId);
+            const title = response?.data?.book?.title;
+            if (title) apiBookMap.set(bookId, String(title));
+          } catch {
+            // Keep fallback title when lookup fails.
+          }
+          }),
+      );
+
+      const nextResults = quizResults.map((result) => {
+        if (!needsTitle(result.bookTitle)) return result;
+        const bookId = String(result.bookId || '');
+        const resolvedTitle = issueBookMap.get(bookId) || historyBookMap.get(bookId) || apiBookMap.get(bookId);
+        return {
+          ...result,
+          bookTitle: resolvedTitle || result.bookTitle || 'Book',
+        };
+      });
+
+      if (active) {
+        setResolvedQuizResults(nextResults);
+      }
+    };
+
+    resolveQuizBookTitles();
+    return () => {
+      active = false;
+    };
+  }, [quizResults, issues, userId]);
 
   return (
     <SafeAreaView style={s.safe}>
@@ -146,13 +228,13 @@ export default function ChildProgressScreen() {
 
         {/* ── Quiz history ── */}
         <Text style={[s.sectionTitle, { marginTop: Spacing.xl }]}>Quiz History</Text>
-        {quizResults.length === 0 ? (
+        {resolvedQuizResults.length === 0 ? (
           <View style={s.emptyBox}>
             <Text style={s.emptyText}>No quizzes taken yet.</Text>
             <Text style={s.emptySub}>Quiz results will appear here after {child?.name ?? 'your child'} completes a quiz.</Text>
           </View>
         ) : (
-          quizResults.map((result, idx) => {
+          resolvedQuizResults.map((result, idx) => {
             const passed = result.pct >= 50;
             const emoji = result.pct === 100 ? '🏆' : result.pct >= 75 ? '🌟' : passed ? '👍' : '📖';
             return (

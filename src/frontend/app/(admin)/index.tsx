@@ -1,6 +1,7 @@
 import { API_BASE_URL } from "@/constants/config";
 import { Colors, Radius, Spacing, Typography } from "@/constants/theme";
 import useAppStore from "@/store/useAppStore";
+import { filterBooksWithCovers } from "@/utils/bookFilters";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -98,7 +99,7 @@ export default function AdminDashboard() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
-      setAllAdminBooks(json.data?.books || []);
+      setAllAdminBooks(filterBooksWithCovers(json.data?.books || []));
     } catch (err) {
       console.warn("Failed to fetch books for admin", err);
     }

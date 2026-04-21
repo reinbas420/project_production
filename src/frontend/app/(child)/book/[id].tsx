@@ -437,7 +437,10 @@ export default function ChildBookDetail() {
           </TouchableOpacity>
 
           <TouchableOpacity style={s.btnGhost} activeOpacity={0.82}>
-            <Text style={s.btnGhostText}>💬 Speak to a librarian</Text>
+            <View style={s.btnGhostContent}>
+              <Text style={s.btnGhostIcon}>💬</Text>
+              <Text style={s.btnGhostText}>Speak to a Librarian</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -538,7 +541,22 @@ const s = StyleSheet.create({
   btnSecondaryText: { fontSize: Typography.bodyChild - 2, fontWeight: '800', color: Colors.accentPeriwinkle },
   btnGhost: {
     borderRadius: Radius.full, paddingVertical: 14, alignItems: 'center',
+    paddingHorizontal: Spacing.md,
     borderWidth: 1.5, borderColor: Colors.cardBorder,
   },
-  btnGhostText: { fontSize: Typography.body, fontWeight: '600', color: Colors.textSecondary },
+  btnGhostContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    width: '100%',
+  },
+  btnGhostIcon: { fontSize: Typography.body },
+  btnGhostText: {
+    fontSize: Typography.body,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    flexShrink: 1,
+  },
 });

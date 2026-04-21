@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { cacheStorage } from '../utils/storage';
+import { filterBooksWithCovers } from '../utils/bookFilters';
 
 /**
  * Book Store
@@ -23,7 +24,7 @@ const useBookStore = create((set, get) => ({
         try {
             const cachedBooks = await cacheStorage.getCachedBooks();
             if (cachedBooks && cachedBooks.length > 0) {
-                set({ books: cachedBooks });
+                set({ books: filterBooksWithCovers(cachedBooks) });
             }
         } catch (error) {
             console.error('Failed to load cached books:', error);
@@ -34,9 +35,10 @@ const useBookStore = create((set, get) => ({
      * Set books from API response and persist to AsyncStorage cache.
      */
     setBooks: async (books) => {
-        set({ books });
+        const filteredBooks = filterBooksWithCovers(books);
+        set({ books: filteredBooks });
         try {
-            await cacheStorage.setCachedBooks(books);
+            await cacheStorage.setCachedBooks(filteredBooks);
         } catch (error) {
             console.error('Failed to cache books:', error);
         }
